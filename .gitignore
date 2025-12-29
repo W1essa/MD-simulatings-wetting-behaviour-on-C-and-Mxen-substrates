@@ -2,9 +2,9 @@
 output/
 *.lammpstrj
 *.log
-*.data
 *.xyz
 *.lammps
+*.dump
 
 # Python & Jupyter
 __pycache__/
@@ -12,6 +12,6 @@ __pycache__/
 *.ipynb_checkpoints
 
 # Virtual environments & configs
-venv/
+.venv/
 .env/
 .vscode/

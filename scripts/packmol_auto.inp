@@ -1,0 +1,10 @@
+
+tolerance 2.5
+filetype xyz
+output /mnt/c/Users/vbarv/Desktop/vns/course/project/lammps/data/water_droplet_packed.xyz
+seed 60873
+
+structure /mnt/c/Users/vbarv/Desktop/vns/course/project/lammps/data/water.xyz
+  number 8936
+  inside sphere 0.0 0.0 44.00 40.0
+end structure

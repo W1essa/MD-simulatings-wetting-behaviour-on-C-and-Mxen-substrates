@@ -1,0 +1,52 @@
+# ==================================================
+# Graphene Relaxation (NPT @ 300K)
+# ==================================================
+# GOAL: Find the stable lattice size at 300K via NPT relaxation.
+
+# --- 1. Initialization ---
+units          metal
+atom_style     full
+boundary       p p f         # XY periodic, Z fixed
+
+# --- 2. System & Potential ---
+read_data      /mnt/c/Users/vbarv/Desktop/vns/course/project/lammps/data/graphene_flat_initial.data
+set            group all charge 0.0
+set            group all mol 1
+
+pair_style     airebo 3.0 1 1
+pair_coeff     * * /usr/share/lammps/potentials/CH.airebo C H
+neighbor       4.0 bin
+neigh_modify   delay 0 every 1 check yes
+
+# --- 3. Settings for NPT Run ---
+timestep       0.0005       # 0.5 fs is reasonable for AIREBO
+thermo         100
+thermo_style   custom step temp pe etotal press pxx pyy pzz lx ly lz
+
+# --- 4. Equilibration (NPT) ---
+# First, assign velocities and run NVT to thermalize the system
+velocity      all create 300.0 4928459 dist gaussian
+fix            1 all nvt temp 300.0 300.0 0.1   # Tdamp = 0.1 ps
+run            20000        # Run for 10 ps to reach 300K
+unfix          1
+
+# Now, switch to NPT to relax the box
+# We control x and y pressure, coupling them to maintain aspect ratio.
+# Z is not controlled, as per 'boundary p p f'.
+fix            2 all npt temp 300.0 300.0 0.1 x 0.0 0.0 0.5 y 0.0 0.0 0.5 couple xy
+run            100000       # Run for 50 ps or until lx/ly stabilize
+unfix          2
+
+# --- 5. Output Final Dimensions ---
+variable final_Lx equal lx
+variable final_Ly equal ly
+
+print "---"
+print "Relaxed Graphene Box Size @ 300K (for merge script):"
+print "variable Lx0 equal ${final_Lx}"
+print "variable Ly0 equal ${final_Ly}"
+print "---"
+
+# --- 6. Finish ---
+write_data     /mnt/c/Users/vbarv/Desktop/vns/course/project/lammps/data/graphene_flat_relaxed_300K.data
+print "Graphene relaxation (NPT @ 300K) complete."
