@@ -1,0 +1,92 @@
+# ==============================================================================
+# SCRIPT: Merge Water Cylinder + Relaxed Pillars (AUTOMATED)
+# GOAL: Create final geometry for wetting simulation with correct alignment
+# ==============================================================================
+
+# --- 1. Initialization ---
+units           metal
+atom_style      full
+boundary        p p f            # Periodic XY, Fixed Z
+
+# Define interaction styles (required to read data files correctly)
+bond_style      harmonic
+angle_style     harmonic
+
+# --- 2. System Definition (AUTOMATED from Relaxation) ---
+# Read the dimensions saved by the relaxation script
+# This file must exist in the same folder!
+include         build_dims.vars
+
+# Define Z boundaries (Manual control for vacuum space)
+variable z_min equal -50.0
+variable z_max equal 250.0
+
+# --- 3. Create Simulation Box ---
+# Use the exact X/Y dimensions from the relaxed graphene to maintain periodicity
+region          main_box block ${sys_xlo} ${sys_xhi} ${sys_ylo} ${sys_yhi} ${z_min} ${z_max} units box
+
+# Create box for 4 atom types:
+# 1=O, 2=H (Water)
+# 3=C, 4=H (Graphene + Passivation)
+create_box      4 main_box bond/types 1 angle/types 1 extra/bond/per/atom 2 extra/angle/per/atom 2 extra/special/per/atom 2
+
+# --- 4. Read Data Files ---
+
+# A. Read Water (Types 1, 2)
+# Ensure the file path is correct relative to the 'scripts' folder
+read_data       ../data/water_cylinder_nocoeff.data add append group Water
+
+# B. Read Relaxed Graphene Pillars (Types 1, 2 -> Shift to 3, 4)
+# We offset types by 2 so they don't mix with water
+read_data       ../data/graphene_relaxed.data add append offset 2 0 0 0 0 group Graphene
+
+# --- 5. Masses (Standard) ---
+mass            1 15.9994 # O (Water)
+mass            2 1.008   # H (Water)
+mass            3 12.011  # C (Graphene)
+mass            4 1.008   # H (Passivation)
+
+# --- 6. ALIGNMENT (Critical Step) ---
+
+# A. Center Graphene in XY
+# We move graphene to the geometric center of the periodic box
+variable bx equal 0.5*(${sys_xhi}+${sys_xlo})
+variable by equal 0.5*(${sys_yhi}+${sys_ylo})
+variable gcx equal xcm(Graphene,x)
+variable gcy equal xcm(Graphene,y)
+displace_atoms Graphene move $(v_bx-v_gcx) $(v_by-v_gcy) 0.0 units box
+
+# B. Center Water in XY
+# We align water exactly over the center of the graphene
+variable wcx equal xcm(Water,x)
+variable wcy equal xcm(Water,y)
+displace_atoms Water move $(v_bx-v_wcx) $(v_by-v_wcy) 0.0 units box
+
+# C. Stack Z (Vertical Alignment)
+# Find the highest atom in the pillars (zmax)
+variable g_top    equal bound(Graphene,zmax)
+# Find the lowest atom in the water (zmin)
+variable w_bottom equal bound(Water,zmin)
+
+# Define safety gap (Angstroms)
+# 3.0 A is usually safe for VdW interactions to start smoothly
+variable gap      equal 3.0
+
+# Calculate shift: How much to lift water so its bottom is at (g_top + gap)
+variable shift_z  equal $(v_g_top - v_w_bottom + v_gap)
+
+print "--- Alignment Details ---"
+print "Pillars Max Z: ${g_top}"
+print "Water Min Z:   ${w_bottom}"
+print "Applying Shift: ${shift_z}"
+
+displace_atoms Water move 0.0 0.0 ${shift_z} units box
+
+# --- 7. Final Output ---
+# Reset image flags (important for PBC)
+reset_atoms image all
+
+# Save the merged system
+write_data      ../data/merged_system_with_relaxed_graphene.data
+
+print "MERGE COMPLETE. File saved to data/merged_system_with_relaxed_graphene.data"
