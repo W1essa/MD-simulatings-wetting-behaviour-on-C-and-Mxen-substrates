@@ -1,121 +1,165 @@
 # ==============================================================================
-# LAMMPS Script: Graphene-Water System (Frozen Graphene)
-# Method: Carlson et al. (2024) Parameters + Soft Start
+# 1. UNIVERSAL EQUILIBRATION OF SPC/E WATER ON FROZEN GRAPHENIC SUBSTRATE
+#
+# Run:
+#   lmpgpu -var geom flat    -in equilibration_graphene.in
+#   lmpgpu -var geom pillars -in equilibration_graphene.in
+#
+# Assumed atom types after merge:
+#   1 = O (water)
+#   2 = H (water)
+#   3 = C (substrate)
+#   4 = H (edge/passivation, if present)
+#
+# Purpose:
+#   - equilibrate water on a frozen substrate
+#   - do NOT relax the carbon framework here
+#   - GPU is controlled by the launch command
 # ==============================================================================
 
-# --- 1. INITIALIZATION ---
-units           metal
+# --- 2. Folders ---
+shell           mkdir -p ../data
+shell           mkdir -p ../dump
+
+# --- 3. Initialization ---
+units           real
 dimension       3
-boundary        p p f            # Periodic XY, Fixed Z (Slab)
+boundary        p p f
 atom_style      full
 
-# Define styles early (required for reading data)
 bond_style      harmonic
 angle_style     harmonic
 
-# --- 2. DATA LOADING ---
-read_data       /mnt/c/Users/vbarv/Desktop/vns/course/project/lammps/data/merged_aligned.data
-comm_modify     cutoff 30.0
+# Required for GPU package pair styles
+newton          off
 
-# --- 3. GROUPS & GEOMETRY FIX ---
-group           water    type 1 2    # 1=O, 2=H
-group           graphene type 3 4    # 3=C, 4=H
-group           mobile   union water
-displace_atoms water move 0 0 -6.0
+# --- 4. Geometry selector ---
+# Default is flat; override with:
+#   -var geom flat
+#   -var geom pillars
+variable        geom index flat
 
-# --- 4. TOPOLOGY CLEANUP ---
-# Remove bonds in frozen graphene to treat as LJ particles
-delete_bonds    graphene multi
+if "${geom} == flat" then &
+  "variable infile string ../data/merged_flat_system_with_relaxed_graphene.data" &
+  "variable outfile string ../data/equilibrated_flat_system.data" &
+  "variable dumpout string ../dump/flat_equil.lammpstrj" &
+  "variable epsilonCO equal 0.1050"
 
-# ======================================================
-# --- FORCE FIELD & MINIMIZATION ---
-# ======================================================
-print "--- SETUP: Force Field & Topology ---"
+if "${geom} == pillars" then &
+  "variable infile string ../data/merged_pillars_system.data" &
+  "variable outfile string ../data/equilibrated_pillars_system.data" &
+  "variable dumpout string ../dump/pillars_equil.lammpstrj" &
+  "variable epsilonCO equal 0.1235"
 
-# Use hybrid CHARMM LJ + Long-range Coulomb
-pair_style      lj/charmm/coul/long 10.0 12.0
+if "${geom} != flat && ${geom} != pillars" then &
+  "print 'ERROR: geom must be flat or pillars'" &
+  "quit 1"
+
+variable        sigmaCO equal 3.367
+
+print "=============================================="
+print "Selected geometry  : ${geom}"
+print "Input file         : ${infile}"
+print "Output file        : ${outfile}"
+print "Dump file          : ${dumpout}"
+print "epsilon_CO (kcal)  : ${epsilonCO}"
+print "sigma_CO (A)       : ${sigmaCO}"
+print "=============================================="
+
+# --- 5. Read merged structure ---
+read_data       ${infile} nocoeff
+
+# --- 6. Groups ---
+group           water      type 1 2
+group           substrate  type 3 4
+
+# --- 7. Charges (SPC/E water; neutral substrate) ---
+set type 1 charge -0.8476
+set type 2 charge  0.4238
+set type 3 charge  0.0
+set type 4 charge  0.0
+
+# --- 8. Nonbonded model ---
+# Carlson-like setup:
+#   LJ cutoff = 9.0 A
+#   LJ shifted to zero at cutoff
+#   Coulomb real-space cutoff = 12.0 A
+pair_style      lj/cut/coul/long 9.0 12.0
+pair_modify     shift yes
 kspace_style    pppm 1.0e-5
 kspace_modify   slab 3.0
 
+# Explicit intramolecular exclusions for bonded water topology
+special_bonds   lj/coul 0.0 0.0 0.0
 
-# Define interaction coefficients (Carlson et al. 2024)
-# O-O (Water)
-pair_coeff      1 1 0.00673 3.166
-# H-H (Water)
-pair_coeff      2 2 0.0     1.0
-# C-C (Graphene)
-pair_coeff      3 3 0.0     3.4
-# H-H (Graphene edge)
-pair_coeff      4 4 0.0     1.0
+# --- 9. LJ coefficients ---
+# Water self-interaction
+pair_coeff      1 1  0.1553   3.166
+pair_coeff      1 2  0.0      1.0
+pair_coeff      2 2  0.0      1.0
 
-# O-C Interaction (Water-Graphene) - The key parameter
-# Standard Carlson value works here due to large cutoff
-pair_coeff      1 3 0.0054 3.367
+# Only O(water)-C(substrate) is nonzero in this reduced model
+pair_coeff      1 3  ${epsilonCO} ${sigmaCO}
 
-# Topology parameters
-bond_coeff      1 1000.0 1.0
-angle_coeff     1 1000.0 109.47
+# Force all other substrate-related LJ terms to zero
+pair_coeff      1 4  0.0      1.0
+pair_coeff      2 3  0.0      1.0
+pair_coeff      2 4  0.0      1.0
+pair_coeff      3 3  0.0      1.0
+pair_coeff      3 4  0.0      1.0
+pair_coeff      4 4  0.0      1.0
 
-# ------------------------------------------------------
-# Remove high-energy overlaps
-# ------------------------------------------------------
-print "--- ACTION: Minimizing initial structure ---"
+# --- 10. Water bonded terms ---
+# Harmonic values are placeholders for pre-SHAKE geometry handling
+bond_coeff      1 1000.0  1.0
+angle_coeff     1 1000.0  109.47
 
-# Relax system to fix bad contacts
-minimize        1.0e-4 1.0e-6 5000 10000
+# --- 11. Freeze substrate ---
+velocity        substrate set 0.0 0.0 0.0 units box
+fix             freeze substrate setforce 0.0 0.0 0.0
 
-# Reset simulation clock after minimization
+# --- 12. Neighbor settings ---
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+
+# --- 13. Optional z-wall safety ---
+# Uncomment if atoms ever escape through the nonperiodic z boundary
+fix             zwall all wall/reflect zhi EDGE
+
+# --- 14. Minimize water/substrate contacts ---
+# Substrate remains frozen
+min_style       fire
+minimize        1.0e-4 1.0e-6 5000 20000
 reset_timestep  0
 
+# --- 15. Temperature compute for water only ---
+compute         Twater water temp
 
-# ======================================================
-# --- EQUILIBRATION (NVT) ---
-# ======================================================
-print "--- ACTION: Starting Equilibration ---"
+# --- 16. Integrator and thermostat ---
+velocity        water create 300.0 12345 mom yes rot yes dist gaussian
 
-timestep        0.002
+fix             lang  water langevin 300.0 300.0 100.0 699483
+fix_modify      lang temp Twater
+fix             int   water nve
 
-# 1. Constraints & Initialization
-fix             fShake water shake 0.0001 20 0 b 1 a 1
-velocity        mobile create 300.0 12345 dist gaussian loop geom
+# SHAKE must come after fixes that add/change forces on water
+fix             shake water shake 1.0e-4 20 0 b 1 a 1
 
-# 2. Thermostat (Langevin)
-#    Applied only to mobile water, ignoring frozen graphene
-fix             fTemp mobile langevin 300.0 300.0 0.1 699483
-compute         t_mobile mobile temp
-fix_modify      fTemp temp t_mobile
-
-# 3. Output Settings
-thermo_style    custom step temp c_t_mobile press etotal zhi
+# --- 17. Output ---
+timestep        1.0
+thermo_style    custom step c_Twater pe ke etotal pxx pyy pzz atoms
 thermo          1000
+dump            d1 all custom 2000 ${dumpout} id type x y z
 
-# ------------------------------------------------------
-# PART A: WARMUP (Stabilize Pressure)
-# ------------------------------------------------------
-print "--- WARMUP: Using nve/limit to prevent SHAKE explosion ---"
+# --- 18. Stage 1: warmup ---
+run             20000
 
-# Use nve/limit to cap displacement at 0.1 Angstrom/step
-fix             fLimit mobile nve/limit 0.1
-run             5000
-unfix           fLimit
+# --- 19. Stage 2: main equilibration ---
+timestep        2.0
+run             100000
 
-# ------------------------------------------------------
-# PART B: PRODUCTION (Main Run)
-# ------------------------------------------------------
-print "--- RUN: Switching to standard NVE & Recording ---"
+# --- 20. Final output ---
+undump          d1
+write_data      ${outfile} nocoeff
 
-# Switch to standard NVE integration
-fix             fNVE mobile nve
-
-# Reset time to 0 for clean analysis
-reset_timestep  0
-
-# Start recording trajectory (AFTER reset_timestep)
-dump            dProd all custom 2000 /mnt/c/Users/vbarv/Desktop/vns/course/project/lammps/data/production.dump id type x y z
-
-# Run for 600 ps
-run             300000
-
-# Save final state
-write_data      /mnt/c/Users/vbarv/Desktop/vns/course/project/lammps/data/equilibrated_system.data
-print "DONE"
+print "SUCCESS: Equilibration finished for ${geom}"
