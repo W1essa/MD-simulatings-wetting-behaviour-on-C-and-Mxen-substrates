@@ -1,3 +1,7 @@
+![License](https://img.shields.io/badge/license-MIT-teal)
+![LAMMPS](https://img.shields.io/badge/LAMMPS-OpenCL-blue)
+![Python](https://img.shields.io/badge/python-3.10+-purple)
+![Platform](https://img.shields.io/badge/platform-Linux-orange)
 # LAMMPS Workspace: Graphene & MXenes wetting
 Molecular Dynamics (MD) simulation scripts and analysis tools for studying surface wettability, contact angles, and density profiles of water droplets on substrates (Graphene, Graphite, Structured Graphite, and MXenes).
 
