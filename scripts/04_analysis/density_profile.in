@@ -6,9 +6,10 @@
 #   - use rerun on an existing trajectory
 #   - prepare data for contact-angle analysis
 #
-# Run:
-#   lmpgpu -var geom flat    -in density_profile.in
-#   lmpgpu -var geom pillars -in density_profile.in
+# Run (from within scripts/04_analysis/ directory):
+#   lmpgpu -var geom graphene            -in density_profile.in
+#   lmpgpu -var geom graphite            -in density_profile.in
+#   lmpgpu -var geom structured_graphite -in density_profile.in
 # ==============================================================================
 
 # --- 1. Basic setup ---
@@ -24,20 +25,26 @@ neighbor        1.0 bin
 neigh_modify    every 1 delay 0 check yes one 10000 page 200000
 
 # --- 2. Geometry selector ---
-variable        geom index flat
+variable        geom index graphene
 
-if "${geom} == flat" then &
-  "variable datafile string ../data/equilibrated_flat_system_v2.data" &
-  "variable dumpfile string ../dump/flat_equil_v2.lammpstrj" &
-  "variable outfile  string ../data/density_flat.dat"
+# Шляхи ../../ використовуються, оскільки ми знаходимося в scripts/04_analysis/
+if "${geom} == graphene" then &
+  "variable datafile string ../../data/equilibrated_graphene.data" &
+  "variable dumpfile string ../../dump/graphene_equil.lammpstrj" &
+  "variable outfile  string ../../data/density_graphene.dat"
 
-if "${geom} == pillars" then &
-  "variable datafile string ../data/equilibrated_pillars_system_v2.data" &
-  "variable dumpfile string ../dump/pillars_equil_v2.lammpstrj" &
-  "variable outfile  string ../data/density_pillars.dat"
+if "${geom} == graphite" then &
+  "variable datafile string ../../data/equilibrated_graphite.data" &
+  "variable dumpfile string ../../dump/graphite_equil.lammpstrj" &
+  "variable outfile  string ../../data/density_graphite.dat"
 
-if "${geom} != flat && ${geom} != pillars" then &
-  "print 'ERROR: geom must be flat or pillars'" &
+if "${geom} == structured_graphite" then &
+  "variable datafile string ../../data/equilibrated_structured_graphite.data" &
+  "variable dumpfile string ../../dump/structured_graphite_equil.lammpstrj" &
+  "variable outfile  string ../../data/density_structured_graphite.dat"
+
+if "${geom} != graphene && ${geom} != graphite && ${geom} != structured_graphite" then &
+  "print 'ERROR: geom must be graphene, graphite, or structured_graphite'" &
   "quit 1"
 
 print "=============================================="
