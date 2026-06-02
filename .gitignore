@@ -62,3 +62,10 @@ scripts/packmol_cube.inp
 scripts/packmol_cube.log
 scripts/water_cube_packed.xyz
 scripts/system_temp.data
+
+data/1try/
+data/density_*.dat
+data/graphene_flat*
+data/graphene_pillars*
+data/restart_*.data
+data/water_droplet_packed.xyz
