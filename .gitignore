@@ -1,5 +1,4 @@
 # Ignore output data and logs
-output/
 *.lammpstrj
 *.log
 *.xyz
